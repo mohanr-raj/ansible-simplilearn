@@ -1,0 +1,17 @@
+--- #gathering facts playbook
+ - hosts: all
+   user: root
+   become: yes
+   connection: ssh 
+   gather_facts: yes
+
+   vars:
+      users: ['Jon', 'Smith', 'Bean', 'Mark'] 
+   tasks:
+     - name: remove list of users from my nodes
+       user: name='{{item}}' state=absent
+       with_items:               # verify in /etc/passwd
+         - Jon
+         - Smith
+         - Bean
+         - Mark

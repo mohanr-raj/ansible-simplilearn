@@ -1,0 +1,7 @@
+--- # master playbook for webserver
+
+ - hosts: all
+   user: root
+   become: yes
+   roles:
+     - webserver

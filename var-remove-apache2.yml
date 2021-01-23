@@ -1,0 +1,13 @@
+--- #gathering facts playbook
+ - hosts: all
+   user: root
+   become: yes
+   connection: ssh 
+   gather_facts: yes
+
+   vars:
+     pkg: apache2 
+   tasks:
+     - name: remove "{{pkg}}"
+       action: apt name='{{pkg}}' state=absent autoremove=yes purge=yes
+ 

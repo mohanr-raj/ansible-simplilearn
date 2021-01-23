@@ -1,0 +1,7 @@
+--- #gathering facts playbook
+ - hosts: all
+   user: root
+   become: yes
+   connection: ssh 
+   gather_facts: yes
+

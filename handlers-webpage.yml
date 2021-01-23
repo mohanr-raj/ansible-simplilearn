@@ -1,0 +1,14 @@
+---   # gather facts playbook
+
+ - hosts: all
+   user: root
+   become: yes
+
+   tasks:
+     - name: Install apache server
+       action: apt name=apache2 state=present
+       notify: host static webpage
+
+   handlers:
+     - name: host static webpage  #should match with notify details
+       script: hello.sh
