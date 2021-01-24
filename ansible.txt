@@ -1,0 +1,287 @@
+########### Install ansible
+
+sudo apt update
+sudo apt install software-properties-common -y
+sudo apt-add-repository --yes --update ppa:ansible/ansible
+sudo apt install ansible -y
+
+ansible --version
+
+
+########### Configure ansible
+- install ansible
+
+- vi /etc/ansible/hosts    
+
+green.example.com
+
+[webservers]
+alpha.example.org
+
+[dbservers]
+10.25.1.56
+
+- ansible -m ping all    # failed
+
+cd
+ssh-keygen            # skip if already have keys
+cat .ssh/id_rsa.pub
+
+#at remote machine
+echo "ssh public key" >> .ssh/authorized_keys
+ssh -p 42006 <remote user name>.centralus.cloudapp.azure.com "hostname"
+ssh -p 42006 <remote user name>.centralus.cloudapp.azure.com "service jenkins status"
+
+
+vi /etc/ansible/hosts
+
+[webservers]
+<remote user name>.centralus.cloudapp.azure.com
+
+ansible -m ping webservers   #fail due to port 22 notreachable and not good to change in master config file /etc/ansible/config but rather in host inventory file.
+
+[webservers]
+<remote user name>.centralus.cloudapp.azure.com ansible_ssh_port=42006
+
+ansible -m ping webservers
+
+ansible-doc -l | head -n 4
+---------------------- playbook intro
+Yaml file intro
+yaml formatter
+ansible modules
+
+gather facts : 
+ansible <host name> -m setup
+ansible localhost -m setup
+----------------------------------------------
+follow the steps on localhost
+
+echo `cat .ssh/id_rsa.pub` >> .ssh/authorized_keys          or   echo "ssh public key" >> .ssh/authorized_keys
+ssh -p 42006 localhost "hostname"
+
+
+vi /etc/ansible/hosts
+[webservers]
+localhost ansible_ssh_port=42006
+ansible -m ping webservers
+-----------------------------------------------
+
+1. ad-hoc commands (simple linux commands -one liner) - temporary - No idempotency   - say touch commands
+2. Modules - single task  (say install apache)   - [like page of a book]
+3. playbook - multiple tasks  [more than 1 module] (install apache, start apache) -[complete book]
+
+ad-hoc commands
+----------------
+  
+ansible all -a "ls"   #arguments
+ansible webservers -a "ls"
+ansible webservers[0] -a "ls"
+ansible all -a "touch file3"
+ansible all -a "rm file3"
+ansible all -a "sudo apt install apache2 -y"       or ansible all -ba "apt install apache2 -y"         then check at nodes by running "which apache2" or "apache2 --version"
+ansible all -a "sudo apt remove apache2 -y"        or ansible all -ba "apt remove apache2 -y"
+ansible all -ba "apt autoremove apache2 -y"        # to permanently remove
+
+--------------------------------------
+modules
+----------
+
+ansible all -b -m apt -a "pkg=apache2 state=present"   or     ansible all -b -m apt -a "pkg=apache2"         # changed = true for first time
+ansible all -b -m apt -a "pkg=apache2 state=present"   or     ansible all -b -m apt -a "pkg=apache2"         # changed = false
+
+ansible all -b -m apt -a "pkg=apache2 state=absent"                    # which apache ,    apache2 -version     # service apache2 status
+
+ansible all -b -m apt -a "pkg=apache2 state=absent autoremove=yes"    or
+ansible all -b -m apt -a "pkg=apache2 state=absent autoremove=yes purge=yes"      # which apache ,    apache2 -version 
+
+ansible all -b -m user -a "name=devops"        # cat /etc/passwd
+
+ansible all -b -m copy -a "src=file1 dest=/tmp"
+ansible all -b -a "ls /tmp"
+
+ansible all -m setup            #idempotency is being checked from setup
+ansible all -m  setup -a "filter=*ipv4*"
+----------------------------------------------------
+
+playbooks
+
+root@ansible-master:~/ansible_code/new-playbooks# cat facts.yml          
+---   # gather facts playbook
+ - hosts: all
+   user: root
+   become: yes
+   connection: ssh
+   gather_facts: yes              # just display the hostname/ip of hosts
+
+------------------------------------------
+vars
+
+root@puneetbhatia77g:~/ansible-demo# cat var-install-apache2.yml
+--- #gathering facts playbook
+ - hosts: all
+   user: root
+   become: yes
+   connection: ssh 
+   gather_facts: yes
+
+   vars:
+     pkg: apache2 
+   tasks:
+     - name: install "{{pkg}}"
+       action: apt name='{{pkg}}' state=present
+
+
+
+root@puneetbhatia77g:~/ansible-demo# cat var-remove-apache2.yml 
+--- #gathering facts playbook
+ - hosts: all
+   user: root
+   become: yes
+   connection: ssh 
+   gather_facts: yes
+
+   vars:
+     pkg: apache2 
+   tasks:
+     - name: remove "{{pkg}}"
+       action: apt name='{{pkg}}' state=absent autoremove=yes purge=yes
+
+-----------------------
+handlers - same as task but based upon dependency
+handlers works with notify directive
+
+vi handlers.yml
+
+---   # gather facts playbook
+ - hosts: all
+   user: root
+   become: yes
+   
+   tasks:
+     - name: Install apache server
+       action: apt name=apache2 state=installed
+       notify: restart apache2
+
+   handlers:
+     - name: host static webpage  #should match with notify details
+       script: hello.sh
+
+
+#hello.sh
+---------
+#!/bin/sh
+
+tee /var/www/html/1.html << _EOF_
+<html>
+<head>
+    <title>
+    Hello
+    </title>
+</head>
+
+<body>
+  <h1><b>Welcome to Apache.</b></h1>
+</body>
+</html>
+_EOF_
+
+
+---------------------------------------
+dryrun - test without execution
+
+ansible-playbook handlers.yml --check   
+-----------------------------------
+root@puneetbhatia77g:~/ansible-demo# cat loops-create-user.yml 
+--- #gathering facts playbook
+ - hosts: all
+   user: root
+   become: yes
+   connection: ssh 
+   gather_facts: yes
+
+   tasks:
+     - name: add list of users in my nodes
+       user: name='{{item}}' state=present
+       with_items:               # verify in /etc/passwd
+         - Jon
+         - Smith
+         - Bean
+         - Mark
+
+----------------------------------------
+root@puneetbhatia77g:~/ansible-demo# cat array-delete-user.yml 
+--- #gathering facts playbook
+ - hosts: all
+   user: root
+   become: yes
+   connection: ssh 
+   gather_facts: yes
+
+   vars:
+      users: ['Jon', 'Smith', 'Bean', 'Mark'] 
+   tasks:
+     - name: remove list of users from my nodes
+       user: name='{{item}}' state=absent
+       with_items:               # verify in /etc/passwd
+         - Jon
+         - Smith
+         - Bean
+         - Mark
+-------------------------------------------
+conditions.yml
+
+root@puneetbhatia77g:~/ansible-demo# cat condition.yml 
+--- #gathering facts playbook
+ - hosts: all
+   user: root
+   become: yes
+   connection: ssh 
+   gather_facts: yes
+
+   tasks:
+     - name: install apache on debian
+       action: apt name=apache2 state=present
+       when: ansible_os_family == "Debian"
+     - name: install apache on redhat
+       action: yum name=httpd state=present
+       when: ansible_os_family == "RedHat"
+
+--------------------------------------------
+vault.yml
+
+ansible-vault create vault.yml   #will ask for password to create a new enctypted password  # vault used AES256
+ansible-vault edit vault.yml  # edit encrypted playbook
+ansible-vault rekey vault.yml # change password
+ansible-vault encrypt target.yml
+ansible-vault decrypt target.yml
+---------------------------------------
+# role - to re-use set of tasks 
+Two ways to re-use tasks - includes and roles
+role.yml
+
+mkdir -p playbook/roles/webserver/tasks
+mkdir playbook/roles/webserver/handlers
+tree
+cd playbook
+touch roles/webserver/tasks/main.yml
+touch master.yml
+tree
+vi roles/webserver/tasks/main.yml
+
+- name: install apache2
+  action: apt name=apache2 state=latest
+
+vi master.yml
+--- # master playbook for webserver
+ - hosts: all
+   user: root
+   become: yes
+   roles:
+     - webserver
+
+ansible-playbook master.yml
+
+    
+ 
+
